@@ -1,4 +1,7 @@
-Bun.serve({
+const activeChannels = new Map();
+const channelOffers = new Map();
+
+const server = Bun.serve({
   port: 3000,
   fetch(req, server) {
     const channelID = new URL(req.url).searchParams.get("channelid");
@@ -16,15 +19,45 @@ Bun.serve({
   },
   websocket: {
     open(ws) {
-      console.log(`Connection received for channel ${ws.data.channelID}`);
-      ws.subscribe(ws.data.channelID);
-      ws.publish(ws.data.channelID, "A user has joined the channel");
+      const channelID = ws.data.channelID;
+      ws.subscribe(channelID);
+      if (activeChannels.has(channelID)) {
+        activeChannels.set(channelID, activeChannels.get(channelID) + 1);
+        const offer = channelOffers.get(channelID);
+        if (offer) {
+          ws.send(offer);
+        }
+      } else {
+        activeChannels.set(channelID, 1);
+        ws.send(JSON.stringify({ type: "create-offer" }));
+      }
+      ws.publish(channelID, "A user has joined the channel");
     },
     message(ws, message) {
-      console.log("Message received", message);
+      const channelID = ws.data.channelID;
+      const data = JSON.parse(message);
+      if (data.type === "offer") {
+        channelOffers.set(channelID, message);
+      }
+      ws.publish(channelID, message);
     },
     close(ws) {
-        ws.unsubscribe(ws.data.channelID)
-    }
+      const channelID = ws.data.channelID;
+
+      if (activeChannels.has(channelID)) {
+        const userCount = activeChannels.get(channelID) - 1;
+
+        if (userCount > 0) {
+          activeChannels.set(channelID, userCount);
+        } else {
+          activeChannels.delete(channelID);
+          channelOffers.delete(channelID); // Remove the offer if the channel is empty
+        }
+      }
+
+      ws.unsubscribe(channelID);
+    },
   },
 });
+
+console.log(`Server running on ws://${server.hostname}:${server.port}`);
