@@ -18,24 +18,27 @@ const server = Bun.serve({
     return new Response("Upgrade failed", { status: 500 });
   },
   websocket: {
+    publishToSelf: false,
     open(ws) {
       const channelID = ws.data.channelID;
       ws.subscribe(channelID);
       if (activeChannels.has(channelID)) {
+        console.log('sending create answer');
         activeChannels.set(channelID, activeChannels.get(channelID) + 1);
         const offer = channelOffers.get(channelID);
         if (offer) {
           ws.send(offer);
         }
       } else {
+        console.log('sending create offer');
         activeChannels.set(channelID, 1);
         ws.send(JSON.stringify({ type: "create-offer" }));
       }
-      ws.publish(channelID, "A user has joined the channel");
     },
     message(ws, message) {
       const channelID = ws.data.channelID;
       const data = JSON.parse(message);
+      console.log('received data', data);
       if (data.type === "offer") {
         channelOffers.set(channelID, message);
       }
